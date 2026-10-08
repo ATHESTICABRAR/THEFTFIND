@@ -56,22 +56,31 @@ let usedCluesCache = [];
 // Roles config
 const ROLES = ['THEFT', 'POLICE', 'DETECTIVE', 'INVESTIGATOR'];
 
-// Word Pairs (Undercover mechanic)
-const WORD_PAIRS = [
-    ["APPLE", "ORANGE"],
-    ["DOG", "WOLF"],
-    ["OCEAN", "RIVER"],
-    ["CAR", "BUS"],
-    ["SUN", "MOON"],
-    ["GUITAR", "VIOLIN"],
-    ["BURGER", "PIZZA"],
-    ["MOUNTAIN", "HILL"],
-    ["PENCIL", "PEN"],
-    ["TEA", "COFFEE"],
-    ["SUMMER", "WINTER"],
-    ["HOSPITAL", "CLINIC"],
-    ["AIRPLANE", "HELICOPTER"]
-];
+// Word Categories
+const WORD_CATEGORIES = {
+    "FOOD": [
+        ["APPLE", "ORANGE"], ["BURGER", "PIZZA"], ["COFFEE", "TEA"], ["CAKE", "PIE"],
+        ["SUSHI", "RAMEN"], ["PANCAKE", "WAFFLE"], ["CHICKEN", "TURKEY"], ["SOUP", "STEW"],
+        ["BUTTER", "CHEESE"], ["FRIES", "CHIPS"], ["TACO", "BURRITO"], ["ICE CREAM", "GELATO"],
+        ["HONEY", "SYRUP"], ["BACON", "SAUSAGE"], ["MILK", "YOGURT"]
+    ],
+    "SUMMER": [
+        ["BEACH", "POOL"], ["SUNGLASSES", "GOGGLES"], ["SANDAL", "SLIPPER"], ["SUN", "MOON"],
+        ["TENT", "CABIN"], ["SURFBOARD", "SKATEBOARD"], ["ISLAND", "PENINSULA"], ["SHORTS", "SWIMSUIT"],
+        ["TOWEL", "BLANKET"], ["OCEAN", "LAKE"], ["CAMPING", "HIKING"], ["MOSQUITO", "FLY"],
+        ["BARBECUE", "PICNIC"], ["WATERMELON", "PINEAPPLE"]
+    ],
+    "WINTER": [
+        ["SNOW", "ICE"], ["JACKET", "SWEATER"], ["GLOVES", "MITTENS"], ["SKI", "SNOWBOARD"],
+        ["FIREPLACE", "HEATER"], ["BLIZZARD", "STORM"], ["SCARF", "BEANIE"], ["PENGUIN", "POLAR BEAR"],
+        ["SLED", "CARRIAGE"], ["ICE SKATE", "ROLLER BLADE"], ["FROST", "DEW"], ["HOT CHOCOLATE", "COFFEE"]
+    ],
+    "FESTIVAL": [
+        ["FIREWORKS", "SPARKLERS"], ["PARADE", "MARCH"], ["MUSIC", "DANCE"], ["CONCERT", "SHOW"],
+        ["COSTUME", "MASK"], ["STAGE", "THEATER"], ["BALLOON", "KITE"], ["PARTY", "CELEBRATION"],
+        ["TENT", "CANOPY"], ["SPEAKER", "MICROPHONE"], ["TICKET", "WRISTBAND"], ["CROWD", "AUDIENCE"]
+    ]
+};
 
 function navTo(screenId) {
     screens.forEach(s => s.classList.remove('active'));
@@ -146,7 +155,7 @@ function updateRoleUI() {
     if (total === 4) {
         presetDiv.classList.remove('hidden');
         customDiv.classList.add('hidden');
-        presetDiv.innerText = "1 🥷 THEFT\n3 🕵️ INVESTIGATOR";
+        presetDiv.innerText = "1 🥷 THEFT\n2 👮 POLICE\n1 🕵️ INVESTIGATOR";
     } else if (total === 5) {
         presetDiv.classList.remove('hidden');
         customDiv.classList.add('hidden');
@@ -180,11 +189,12 @@ function confirmCreateRoom() {
     
     roomCode = nameInput;
     gameState.password = document.getElementById('create-room-pass').value.trim();
+    gameState.category = document.getElementById('word-category').value;
     
     let total = parseInt(document.getElementById('total-players').value) || 4;
     
     if (total === 4) {
-        gameState.roleConfig = { THEFT: 1, POLICE: 0, DETECTIVE: 0, INVESTIGATOR: 3 };
+        gameState.roleConfig = { THEFT: 1, POLICE: 2, DETECTIVE: 0, INVESTIGATOR: 1 };
         gameState.totalMaxPlayers = 4;
     } else if (total === 5) {
         gameState.roleConfig = { THEFT: 1, POLICE: 3, DETECTIVE: 0, INVESTIGATOR: 1 };
@@ -284,8 +294,8 @@ function handleHostData(conn, data) {
     else if (data.type === 'READY_ROLE') {
         gameState.readyCount++;
         if (gameState.readyCount === gameState.players.length) {
-            broadcast({ type: 'GOTO_SCENARIO' });
-            navTo('screen-scenario');
+            broadcast({ type: 'GOTO_DISCUSSION' });
+            startDiscussionHost();
             gameState.readyCount = 0;
         }
     }
@@ -349,7 +359,10 @@ function startGame() {
     roles.sort(() => Math.random() - 0.5);
     gameState.players.forEach((p, i) => p.role = roles[i]);
 
-    let pair = WORD_PAIRS[Math.floor(Math.random() * WORD_PAIRS.length)];
+    let category = gameState.category || 'FOOD';
+    let catWords = WORD_CATEGORIES[category];
+    let pair = catWords[Math.floor(Math.random() * catWords.length)];
+    
     let majorityWord = Math.random() > 0.5 ? pair[0] : pair[1];
     let minorityWord = majorityWord === pair[0] ? pair[1] : pair[0];
     
@@ -365,13 +378,12 @@ function startGame() {
         passDeviceToNext();
     } else {
         gameState.players.forEach(p => {
-            let pWord = (p.role === 'THEFT') ? minorityWord : majorityWord;
+            let pWord = (p.role === 'THEFT') ? '???' : majorityWord;
+            if (p.role === 'INVESTIGATOR') pWord = minorityWord;
             
             let msg = {
                 type: 'START',
                 role: p.role,
-                scenarioTitle: "Memorize your word!",
-                scenarioDesc: "",
                 clue: pWord
             };
 
@@ -386,13 +398,8 @@ function startGame() {
 
 function passDeviceToNext() {
     if (localCurrentPlayerIndex >= gameState.players.length) {
-        // Everyone saw their roles
-        navTo('screen-scenario');
-        document.getElementById('scenario-title').innerText = "DISCUSS";
-        document.getElementById('scenario-desc').dataset.text = "";
-        document.getElementById('player-clue').dataset.text = "Take turns saying ONE word to describe your secret word. Find the THEFT!";
-        typeWriter('scenario-desc', 20);
-        setTimeout(() => typeWriter('player-clue', 20), 500);
+        // Everyone saw their roles, go straight to discussion!
+        startDiscussionHost();
         return;
     }
     
@@ -403,12 +410,11 @@ function passDeviceToNext() {
 
 function confirmDevicePassed() {
     let p = gameState.players[localCurrentPlayerIndex];
-    let pWord = (p.role === 'THEFT') ? gameState.currentMinorityWord : gameState.currentMajorityWord;
+    let pWord = (p.role === 'THEFT') ? '???' : gameState.currentMajorityWord;
+    if (p.role === 'INVESTIGATOR') pWord = gameState.currentMinorityWord;
     
     let msg = {
         role: p.role,
-        scenarioTitle: "Memorize your word!",
-        scenarioDesc: "",
         clue: pWord
     };
     setupRoleScreen(msg);
@@ -430,8 +436,6 @@ function handleClientData(data) {
         updateLobbyUI(data.players, data.max);
     } else if (data.type === 'START') {
         setupRoleScreen(data);
-    } else if (data.type === 'GOTO_SCENARIO') {
-        navTo('screen-scenario');
     } else if (data.type === 'GOTO_DISCUSSION') {
         startDiscussionClient(data.time || 90);
     } else if (data.type === 'GOTO_VOTE') {
@@ -450,13 +454,9 @@ function handleClientData(data) {
 function setupRoleScreen(data) {
     myRole = data.role;
     document.getElementById('role-name').innerText = myRole;
-    document.getElementById('role-desc').innerText = myRole === 'THEFT' ? "You are the criminal. Blend in!" : "Find the THEFT.";
     document.getElementById('role-icon').innerText = myRole === 'THEFT' ? "🥷" : (myRole==='POLICE'?"👮":(myRole==='DETECTIVE'?"🔍":"🕵️"));
     
-    // Store data for typewriter effect later
-    document.getElementById('scenario-title').innerText = data.scenarioTitle;
-    document.getElementById('scenario-desc').dataset.text = data.scenarioDesc;
-    document.getElementById('player-clue').dataset.text = data.clue;
+    document.getElementById('player-secret-word').innerText = data.clue;
     
     document.getElementById('role-card').classList.remove('is-flipped');
     document.getElementById('role-ready-btn').classList.add('hidden');
@@ -466,6 +466,7 @@ function setupRoleScreen(data) {
 
 function typeWriter(elementId, speed = 30) {
     let el = document.getElementById(elementId);
+    if (!el || !el.dataset.text) return;
     let text = el.dataset.text;
     el.innerText = '';
     let i = 0;
@@ -522,14 +523,11 @@ function readyForScenario() {
     if (isHost) handleHostData({peer: peer.id}, {type:'READY_ROLE'});
     else hostConnection.send({type:'READY_ROLE'});
     
-    document.getElementById('role-ready-btn').innerText = "WAITING...";
-    document.getElementById('role-ready-btn').disabled = true;
-    
-    // Trigger typewriter effect for the next screen
-    setTimeout(() => {
-        typeWriter('scenario-desc', 20);
-        setTimeout(() => typeWriter('player-clue', 30), 1000);
-    }, 500);
+    let btn = document.getElementById('role-ready-btn');
+    if (btn) {
+        btn.innerText = "WAITING...";
+        btn.disabled = true;
+    }
 }
 
 function readyForDiscussion() {

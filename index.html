@@ -67,6 +67,16 @@
             
             <h4 class="highlight-gold mt-1 mb-1">ROLES & MEMBERS</h4>
             
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
+                <span>CATEGORY:</span> 
+                <select id="word-category" class="input-dark text-center" style="width:120px; padding:5px; margin:0;">
+                    <option value="FOOD">🍔 FOOD</option>
+                    <option value="SUMMER">☀️ SUMMER</option>
+                    <option value="WINTER">❄️ WINTER</option>
+                    <option value="FESTIVAL">🎉 FESTIVAL</option>
+                </select>
+            </div>
+
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                 <span>TOTAL PLAYERS:</span> 
                 <input type="number" id="total-players" value="4" min="4" max="15" class="input-dark text-center" style="width:70px; padding:5px; margin:0;" onchange="updateRoleUI()">
@@ -74,22 +84,23 @@
             
             <div id="preset-roles" class="story-text text-center highlight-gold" style="font-size: 1rem; margin-bottom: 15px; white-space: pre-line;">
                 1 🥷 THEFT
-                3 🕵️ INVESTIGATORS
+                2 👮 POLICE
+                1 🕵️ INVESTIGATOR
             </div>
 
             <div id="custom-roles" class="hidden">
                 <p class="hint-text mb-1">Customize your distribution:</p>
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
-                    <span>🥷 THEFT:</span> <input type="number" id="count-theft" value="2" min="1" max="5" class="input-dark text-center" style="width:60px; padding:5px; margin:0;">
+                    <span>🥷 THEFT:</span> <input type="number" id="count-theft" value="1" min="1" max="5" class="input-dark text-center" style="width:60px; padding:5px; margin:0;">
                 </div>
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
                     <span>👮 POLICE:</span> <input type="number" id="count-police" value="2" min="0" max="5" class="input-dark text-center" style="width:60px; padding:5px; margin:0;">
                 </div>
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
-                    <span>🔍 DETECTIVE:</span> <input type="number" id="count-detective" value="1" min="0" max="3" class="input-dark text-center" style="width:60px; padding:5px; margin:0;">
+                    <span>🔍 DETECTIVE:</span> <input type="number" id="count-detective" value="0" min="0" max="3" class="input-dark text-center" style="width:60px; padding:5px; margin:0;">
                 </div>
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
-                    <span>🕵️ INVESTIGATOR:</span> <input type="number" id="count-investigator" value="2" min="0" max="10" class="input-dark text-center" style="width:60px; padding:5px; margin:0;">
+                    <span>🕵️ INVESTIGATOR:</span> <input type="number" id="count-investigator" value="1" min="0" max="10" class="input-dark text-center" style="width:60px; padding:5px; margin:0;">
                 </div>
             </div>
 
@@ -109,7 +120,7 @@
         </div>
         <div id="host-controls" class="hidden">
             <button class="btn btn-primary mt-3" id="start-game-btn" onclick="startGame()">START GAME</button>
-            <p class="hint-text mt-1">Needs at least 3 players.</p>
+            <p class="hint-text mt-1">Needs at least 4 players.</p>
         </div>
         <div id="client-waiting" class="hidden mt-3">
             <p class="hint-text">Waiting for host to start...</p>
@@ -128,17 +139,20 @@
 
     <!-- 4. ROLE REVEAL -->
     <div id="screen-role" class="screen">
-        <h2 class="header-title">YOUR SECRET ROLE</h2>
+        <h2 class="header-title">SECRET ASSIGNMENT</h2>
         <div class="card-flip-container" onclick="toggleRoleCard()">
             <div class="card-flip-inner" id="role-card">
                 <div class="card-front">
                     <p>TAP TO REVEAL</p>
                     <div class="fingerprint-icon">👆</div>
                 </div>
-                <div class="card-back">
-                    <h1 id="role-name">INVESTIGATOR</h1>
-                    <div class="role-icon" id="role-icon">🕵️</div>
-                    <p id="role-desc">Find the THEFT before they escape.</p>
+                <div class="card-back" style="justify-content: flex-start; padding-top: 40px;">
+                    <h3 id="role-name" style="font-size: 1.2rem; color: #a8b2d1; letter-spacing: 2px;">INVESTIGATOR</h3>
+                    <div class="role-icon" id="role-icon" style="font-size: 3.5rem; margin: 10px 0;">🕵️</div>
+                    <div style="background: rgba(0,0,0,0.5); padding: 15px; border-radius: 8px; width: 100%; margin-top: 15px; border: 1px solid var(--accent-gold);">
+                        <p style="font-size: 0.9rem; color: #a8b2d1; margin-bottom: 5px;">YOUR WORD:</p>
+                        <h1 id="player-secret-word" class="highlight-gold" style="font-size: 2.2rem; letter-spacing: 1px; word-wrap: break-word;">ORANGE</h1>
+                    </div>
                 </div>
             </div>
         </div>
@@ -150,17 +164,6 @@
             <button class="btn btn-accent mb-1" style="box-shadow: 0 4px 15px rgba(69,123,157,0.4);" onclick="chooseAllegiance('POLICE')">WORK WITH POLICE 👮</button>
             <button class="btn btn-primary" style="box-shadow: 0 4px 15px rgba(230,57,70,0.4);" onclick="chooseAllegiance('THEFT')">WORK WITH THEFT 🥷</button>
         </div>
-    </div>
-
-    <!-- 5. SECRET WORD REVEAL -->
-    <div id="screen-scenario" class="screen">
-        <h2 class="header-title highlight-red">SECRET WORD</h2>
-        <div class="panel text-center">
-            <h3 id="scenario-title" class="mb-2">Memorize your word!</h3>
-            <p id="scenario-desc" class="story-text hidden">...</p>
-            <h1 id="player-clue" class="highlight-gold" style="font-size: 3.5rem; letter-spacing: 2px;">...</h1>
-        </div>
-        <button class="btn btn-primary mt-3" onclick="readyForDiscussion()">CONTINUE</button>
     </div>
 
     <!-- 6. DISCUSSION -->
