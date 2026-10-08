@@ -84,9 +84,38 @@ function showCreateRoomPopup() {
     document.getElementById('overlay-create').classList.add('active');
     // Generate a random room name suggestion
     document.getElementById('create-room-name').value = "ROOM-" + Math.random().toString(36).substring(2, 6).toUpperCase();
+    updateRoleUI(); // Initialize UI
 }
 function closeCreateRoomPopup() {
     document.getElementById('overlay-create').classList.remove('active');
+}
+
+function updateRoleUI() {
+    let total = parseInt(document.getElementById('total-players').value) || 4;
+    if (total < 4) {
+        total = 4;
+        document.getElementById('total-players').value = 4;
+    }
+    
+    let presetDiv = document.getElementById('preset-roles');
+    let customDiv = document.getElementById('custom-roles');
+    
+    if (total === 4) {
+        presetDiv.classList.remove('hidden');
+        customDiv.classList.add('hidden');
+        presetDiv.innerText = "1 🥷 THEFT\n3 🕵️ INVESTIGATOR";
+    } else if (total === 5) {
+        presetDiv.classList.remove('hidden');
+        customDiv.classList.add('hidden');
+        presetDiv.innerText = "1 🥷 THEFT\n3 👮 POLICE\n1 🕵️ INVESTIGATOR";
+    } else if (total === 6) {
+        presetDiv.classList.remove('hidden');
+        customDiv.classList.add('hidden');
+        presetDiv.innerText = "1 🥷 THEFT\n3 👮 POLICE\n1 🔍 DETECTIVE\n1 🕵️ INVESTIGATOR";
+    } else {
+        presetDiv.classList.add('hidden');
+        customDiv.classList.remove('hidden');
+    }
 }
 
 // --- PEERJS NETWORKING ---
@@ -109,14 +138,30 @@ function confirmCreateRoom() {
     roomCode = nameInput;
     gameState.password = document.getElementById('create-room-pass').value.trim();
     
-    // Read custom role configuration
-    gameState.roleConfig = {
-        THEFT: parseInt(document.getElementById('count-theft').value) || 1,
-        POLICE: parseInt(document.getElementById('count-police').value) || 0,
-        DETECTIVE: parseInt(document.getElementById('count-detective').value) || 0,
-        INVESTIGATOR: parseInt(document.getElementById('count-investigator').value) || 3
-    };
-    gameState.totalMaxPlayers = gameState.roleConfig.THEFT + gameState.roleConfig.POLICE + gameState.roleConfig.DETECTIVE + gameState.roleConfig.INVESTIGATOR;
+    let total = parseInt(document.getElementById('total-players').value) || 4;
+    
+    if (total === 4) {
+        gameState.roleConfig = { THEFT: 1, POLICE: 0, DETECTIVE: 0, INVESTIGATOR: 3 };
+        gameState.totalMaxPlayers = 4;
+    } else if (total === 5) {
+        gameState.roleConfig = { THEFT: 1, POLICE: 3, DETECTIVE: 0, INVESTIGATOR: 1 };
+        gameState.totalMaxPlayers = 5;
+    } else if (total === 6) {
+        gameState.roleConfig = { THEFT: 1, POLICE: 3, DETECTIVE: 1, INVESTIGATOR: 1 };
+        gameState.totalMaxPlayers = 6;
+    } else {
+        // Read custom role configuration for 7+ players
+        gameState.roleConfig = {
+            THEFT: parseInt(document.getElementById('count-theft').value) || 0,
+            POLICE: parseInt(document.getElementById('count-police').value) || 0,
+            DETECTIVE: parseInt(document.getElementById('count-detective').value) || 0,
+            INVESTIGATOR: parseInt(document.getElementById('count-investigator').value) || 0
+        };
+        gameState.totalMaxPlayers = gameState.roleConfig.THEFT + gameState.roleConfig.POLICE + gameState.roleConfig.DETECTIVE + gameState.roleConfig.INVESTIGATOR;
+        if (gameState.totalMaxPlayers < 7) {
+            return alert("Your custom roles sum to " + gameState.totalMaxPlayers + ". Please adjust them to match your total players, or pick 4-6 players.");
+        }
+    }
     
     initPeer('THEFTFIND-' + roomCode, () => {
         document.getElementById('room-code-display').innerText = roomCode;

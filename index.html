@@ -48,17 +48,31 @@
             <input type="password" id="create-room-pass" placeholder="PASSWORD (OPTIONAL)" class="input-dark text-center">
             
             <h4 class="highlight-gold mt-1 mb-1">ROLES & MEMBERS</h4>
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
-                <span>🥷 THEFT:</span> <input type="number" id="count-theft" value="1" min="1" max="5" class="input-dark text-center" style="width:60px; padding:5px; margin:0;">
+            
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                <span>TOTAL PLAYERS:</span> 
+                <input type="number" id="total-players" value="4" min="4" max="15" class="input-dark text-center" style="width:70px; padding:5px; margin:0;" onchange="updateRoleUI()">
             </div>
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
-                <span>👮 POLICE:</span> <input type="number" id="count-police" value="1" min="0" max="3" class="input-dark text-center" style="width:60px; padding:5px; margin:0;">
+            
+            <div id="preset-roles" class="story-text text-center highlight-gold" style="font-size: 1rem; margin-bottom: 15px; white-space: pre-line;">
+                1 🥷 THEFT
+                3 🕵️ INVESTIGATORS
             </div>
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
-                <span>🔍 DETECTIVE:</span> <input type="number" id="count-detective" value="1" min="0" max="3" class="input-dark text-center" style="width:60px; padding:5px; margin:0;">
-            </div>
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
-                <span>🕵️ INVESTIGATOR:</span> <input type="number" id="count-investigator" value="3" min="1" max="15" class="input-dark text-center" style="width:60px; padding:5px; margin:0;">
+
+            <div id="custom-roles" class="hidden">
+                <p class="hint-text mb-1">Customize your distribution:</p>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
+                    <span>🥷 THEFT:</span> <input type="number" id="count-theft" value="2" min="1" max="5" class="input-dark text-center" style="width:60px; padding:5px; margin:0;">
+                </div>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
+                    <span>👮 POLICE:</span> <input type="number" id="count-police" value="2" min="0" max="5" class="input-dark text-center" style="width:60px; padding:5px; margin:0;">
+                </div>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
+                    <span>🔍 DETECTIVE:</span> <input type="number" id="count-detective" value="1" min="0" max="3" class="input-dark text-center" style="width:60px; padding:5px; margin:0;">
+                </div>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+                    <span>🕵️ INVESTIGATOR:</span> <input type="number" id="count-investigator" value="2" min="0" max="10" class="input-dark text-center" style="width:60px; padding:5px; margin:0;">
+                </div>
             </div>
 
             <button class="btn btn-primary mt-2" onclick="confirmCreateRoom()">CONFIRM & CREATE</button>
