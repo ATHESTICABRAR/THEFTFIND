@@ -35,6 +35,7 @@ const screens = document.querySelectorAll('.screen');
 let myName = '';
 let myRole = '';
 let isHost = false;
+let isLocalGame = false;
 let peer = null;
 let roomCode = '';
 let connections = []; // For host
@@ -47,6 +48,10 @@ let gameState = {
     votes: {}, // peerId -> votedPeerId
     readyCount: 0
 };
+
+// Local Game State
+let localCurrentPlayerIndex = 0;
+let usedCluesCache = [];
 
 // Roles config
 const ROLES = ['THEFT', 'POLICE', 'DETECTIVE', 'INVESTIGATOR'];
@@ -76,14 +81,52 @@ function navTo(screenId) {
 function showLobbySetup() {
     myName = document.getElementById('player-name').value.trim();
     if (!myName) return alert("Enter your name first!");
+    isLocalGame = false;
     navTo('screen-setup');
 }
 
+function showLocalSetup() {
+    isLocalGame = true;
+    gameState.players = [];
+    document.getElementById('local-player-list').innerHTML = '';
+    navTo('screen-local-setup');
+}
+
+function addLocalPlayer() {
+    let input = document.getElementById('local-player-name');
+    let name = input.value.trim();
+    if (!name) return alert("Enter a name!");
+    if (gameState.players.find(p => p.name === name)) return alert("Name already exists!");
+    
+    gameState.players.push({ id: 'local_' + gameState.players.length, name: name, isAlive: true, host: false });
+    input.value = '';
+    
+    let ul = document.getElementById('local-player-list');
+    ul.innerHTML += `<li>${name}</li>`;
+}
+
 // --- LOBBY POPUPS ---
-function showCreateRoomPopup() {
+function showCreateRoomPopup(fromLocal = false) {
+    if (fromLocal && gameState.players.length < 4) {
+        return alert("You need at least 4 players for a local game!");
+    }
     document.getElementById('overlay-create').classList.add('active');
-    // Generate a random room name suggestion
-    document.getElementById('create-room-name').value = "ROOM-" + Math.random().toString(36).substring(2, 6).toUpperCase();
+    
+    let roomInput = document.getElementById('create-room-name');
+    let passInput = document.getElementById('create-room-pass');
+    
+    if (isLocalGame) {
+        roomInput.value = "LOCAL GAME";
+        roomInput.disabled = true;
+        passInput.classList.add('hidden');
+        document.getElementById('total-players').value = gameState.players.length;
+        document.getElementById('total-players').disabled = true;
+    } else {
+        roomInput.value = "ROOM-" + Math.random().toString(36).substring(2, 6).toUpperCase();
+        roomInput.disabled = false;
+        passInput.classList.remove('hidden');
+        document.getElementById('total-players').disabled = false;
+    }
     updateRoleUI(); // Initialize UI
 }
 function closeCreateRoomPopup() {
@@ -133,7 +176,7 @@ function initPeer(id, onOpen) {
 function confirmCreateRoom() {
     isHost = true;
     let nameInput = document.getElementById('create-room-name').value.trim().toUpperCase().replace(/\s+/g, '-');
-    if (!nameInput) return alert("Please enter a Room Name!");
+    if (!nameInput && !isLocalGame) return alert("Please enter a Room Name!");
     
     roomCode = nameInput;
     gameState.password = document.getElementById('create-room-pass').value.trim();
@@ -158,9 +201,18 @@ function confirmCreateRoom() {
             INVESTIGATOR: parseInt(document.getElementById('count-investigator').value) || 0
         };
         gameState.totalMaxPlayers = gameState.roleConfig.THEFT + gameState.roleConfig.POLICE + gameState.roleConfig.DETECTIVE + gameState.roleConfig.INVESTIGATOR;
-        if (gameState.totalMaxPlayers < 7) {
+        if (gameState.totalMaxPlayers < 7 && !isLocalGame) { // allow sum matching for local if they bypass
             return alert("Your custom roles sum to " + gameState.totalMaxPlayers + ". Please adjust them to match your total players, or pick 4-6 players.");
         }
+    }
+    
+    if (isLocalGame) {
+        if (gameState.players.length !== gameState.totalMaxPlayers) {
+            return alert(`Your custom roles sum to ${gameState.totalMaxPlayers}, but you have ${gameState.players.length} players! Adjust the roles.`);
+        }
+        closeCreateRoomPopup();
+        startGame(); // directly start!
+        return;
     }
     
     initPeer('THEFTFIND-' + roomCode, () => {
@@ -293,28 +345,63 @@ function startGame() {
     let scenario = SCENARIOS[0];
     
     // Distribute clues
-    let usedClues = [...scenario.clues].sort(() => Math.random() - 0.5);
+    usedCluesCache = [...scenario.clues].sort(() => Math.random() - 0.5);
     
-    gameState.players.forEach(p => {
-        let pClue = p.role === 'THEFT' ? scenario.theftClue : usedClues.pop() || "You didn't notice anything useful.";
-        
-        let msg = {
-            type: 'START',
-            role: p.role,
-            scenarioTitle: scenario.title,
-            scenarioDesc: scenario.desc,
-            clue: pClue
-        };
-
-        if (p.host) {
-            setupRoleScreen(msg);
-        } else {
-            p.conn.send(msg);
-        }
-    });
-
     gameState.phase = 'ROLE';
     gameState.readyCount = 0;
+    
+    if (isLocalGame) {
+        localCurrentPlayerIndex = 0;
+        passDeviceToNext();
+    } else {
+        gameState.players.forEach(p => {
+            let pClue = p.role === 'THEFT' ? scenario.theftClue : usedCluesCache.pop() || "You didn't notice anything useful.";
+            
+            let msg = {
+                type: 'START',
+                role: p.role,
+                scenarioTitle: scenario.title,
+                scenarioDesc: scenario.desc,
+                clue: pClue
+            };
+
+            if (p.host) {
+                setupRoleScreen(msg);
+            } else {
+                p.conn.send(msg);
+            }
+        });
+    }
+}
+
+function passDeviceToNext() {
+    if (localCurrentPlayerIndex >= gameState.players.length) {
+        // Everyone saw their roles, time to show scenario together
+        navTo('screen-scenario');
+        document.getElementById('scenario-title').innerText = SCENARIOS[0].title;
+        document.getElementById('scenario-desc').dataset.text = SCENARIOS[0].desc;
+        document.getElementById('player-clue').dataset.text = "Discuss out loud. What are your individual clues?";
+        typeWriter('scenario-desc', 20);
+        setTimeout(() => typeWriter('player-clue', 30), 1000);
+        return;
+    }
+    
+    let p = gameState.players[localCurrentPlayerIndex];
+    document.getElementById('pass-device-name').innerText = p.name;
+    navTo('screen-pass-device');
+}
+
+function confirmDevicePassed() {
+    let p = gameState.players[localCurrentPlayerIndex];
+    let pClue = p.role === 'THEFT' ? SCENARIOS[0].theftClue : (usedCluesCache.pop() || "You didn't notice anything useful.");
+    
+    let msg = {
+        role: p.role,
+        scenarioTitle: SCENARIOS[0].title,
+        scenarioDesc: "Read this screen alone. Memorize your clue.",
+        clue: pClue
+    };
+    setupRoleScreen(msg);
 }
 
 // --- CLIENT LOGIC ---
@@ -388,6 +475,13 @@ function toggleRoleCard() {
 }
 
 function readyForScenario() {
+    if (isLocalGame) {
+        // Just move to the next player's pass screen
+        localCurrentPlayerIndex++;
+        passDeviceToNext();
+        return;
+    }
+    
     if (isHost) handleHostData({peer: peer.id}, {type:'READY_ROLE'});
     else hostConnection.send({type:'READY_ROLE'});
     
@@ -402,6 +496,11 @@ function readyForScenario() {
 }
 
 function readyForDiscussion() {
+    if (isLocalGame) {
+        startDiscussionHost();
+        return;
+    }
+    
     if (isHost) handleHostData({peer: peer.id}, {type:'READY_DISCUSSION'});
     else hostConnection.send({type:'READY_DISCUSSION'});
     
@@ -412,7 +511,7 @@ function readyForDiscussion() {
 // --- DISCUSSION ---
 let discTimer;
 function startDiscussionHost() {
-    broadcast({ type: 'GOTO_DISCUSSION', time: 90 });
+    if (!isLocalGame) broadcast({ type: 'GOTO_DISCUSSION', time: 90 });
     startDiscussionClient(90);
     document.getElementById('host-discussion-controls').classList.remove('hidden');
 }
@@ -431,7 +530,7 @@ function startDiscussionClient(time) {
         document.getElementById('timer-display').innerText = t;
         if (t <= 0) {
             clearInterval(discTimer);
-            if(isHost) endDiscussionEarly();
+            if(isHost || isLocalGame) endDiscussionEarly();
         }
     }, 1000);
 }
@@ -439,9 +538,38 @@ function startDiscussionClient(time) {
 function endDiscussionEarly() {
     clearInterval(discTimer);
     let alive = gameState.players.filter(p=>p.isAlive).map(p=>({id:p.id, name:p.name}));
-    broadcast({ type: 'GOTO_VOTE', alivePlayers: alive });
-    setupVoteScreen(alive);
-    gameState.votes = {};
+    
+    if (isLocalGame) {
+        setupLocalVoteScreen(alive);
+    } else {
+        broadcast({ type: 'GOTO_VOTE', alivePlayers: alive });
+        setupVoteScreen(alive);
+        gameState.votes = {};
+    }
+}
+
+// --- LOCAL VOTING ---
+function setupLocalVoteScreen(alivePlayers) {
+    navTo('screen-local-vote');
+    let list = document.getElementById('local-vote-list');
+    list.innerHTML = '';
+
+    alivePlayers.forEach(p => {
+        let btn = document.createElement('button');
+        btn.className = 'vote-btn';
+        btn.innerText = `ELIMINATE ${p.name}`;
+        btn.onclick = () => {
+            if (confirm(`Are you sure the group voted to eliminate ${p.name}?`)) {
+                gameState.votes = {};
+                // Force a fake vote from everyone to this person
+                alivePlayers.forEach(ap => {
+                    gameState.votes[ap.id] = p.id;
+                });
+                checkVotesComplete(); // Resolves just like online!
+            }
+        };
+        list.appendChild(btn);
+    });
 }
 
 // --- VOTING ---
@@ -501,7 +629,7 @@ function checkVotesComplete() {
 
         if (theftsAlive === 0) {
             let res = { type:'END', winner:'INVESTIGATORS', elimName: elimPlayer?elimPlayer.name:'No one', elimRole: elimPlayer?elimPlayer.role:'' };
-            broadcast(res);
+            if (!isLocalGame) broadcast(res);
             showEndScreen(res);
             // Save to Mongo
             DatabaseService.saveMatchResult({
@@ -513,7 +641,7 @@ function checkVotesComplete() {
             });
         } else if (theftsAlive >= innocentsAlive) {
             let res = { type:'END', winner:'THEFTS', elimName: elimPlayer?elimPlayer.name:'No one', elimRole: elimPlayer?elimPlayer.role:'' };
-            broadcast(res);
+            if (!isLocalGame) broadcast(res);
             showEndScreen(res);
             // Save to Mongo
             DatabaseService.saveMatchResult({
@@ -525,7 +653,7 @@ function checkVotesComplete() {
             });
         } else {
             let res = { type:'RESULT', name: elimPlayer?elimPlayer.name:'No one', role: elimPlayer?elimPlayer.role:'Unknown' };
-            broadcast(res);
+            if (!isLocalGame) broadcast(res);
             showResultScreen(res);
         }
     }
@@ -536,7 +664,7 @@ function showResultScreen(data) {
     document.getElementById('eliminated-name').innerText = `${data.name} was voted out.`;
     document.getElementById('eliminated-role-reveal').innerText = `They were ${data.role === 'THEFT' ? 'the THEFT!' : 'an innocent.'}`;
     
-    if (isHost) {
+    if (isHost || isLocalGame) {
         document.getElementById('next-round-btn').classList.remove('hidden');
         document.getElementById('waiting-host-result').classList.add('hidden');
     }

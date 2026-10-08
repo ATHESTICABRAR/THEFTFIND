@@ -21,13 +21,31 @@
         </div>
         
         <div class="menu-buttons">
-            <input type="text" id="player-name" placeholder="Enter Your Name" class="input-dark">
-            <button class="btn btn-primary" onclick="showLobbySetup()">PLAY</button>
+            <input type="text" id="player-name" placeholder="Enter Your Name (For Online)" class="input-dark">
+            <button class="btn btn-primary" onclick="showLobbySetup()">ONLINE MULTIPLAYER</button>
+            <button class="btn btn-accent" onclick="showLocalSetup()">LOCAL (ONE DEVICE)</button>
             <button class="btn btn-secondary" onclick="navTo('screen-howto')">HOW TO PLAY</button>
         </div>
     </div>
 
-    <!-- 2. LOBBY SETUP (Create/Join) -->
+    <!-- 1.5 LOCAL SETUP -->
+    <div id="screen-local-setup" class="screen">
+        <h2 class="header-title">LOCAL GAME</h2>
+        <div class="panel text-center">
+            <p class="hint-text mb-1">Pass the device to play with friends.</p>
+            <input type="text" id="local-player-name" placeholder="PLAYER NAME" class="input-dark text-center">
+            <button class="btn btn-secondary mb-2" onclick="addLocalPlayer()">+ ADD PLAYER</button>
+            
+            <ul id="local-player-list" class="list-dark mt-2 mb-2">
+                <!-- Local players injected here -->
+            </ul>
+            
+            <button class="btn btn-primary" onclick="showCreateRoomPopup(true)">CONFIGURE & START</button>
+        </div>
+        <button class="btn btn-outline mt-3" onclick="navTo('screen-home')">BACK</button>
+    </div>
+
+    <!-- 2. LOBBY SETUP (Online Create/Join) -->
     <div id="screen-setup" class="screen">
         <h2 class="header-title">MULTIPLAYER</h2>
         <div class="panel">
@@ -98,6 +116,16 @@
         </div>
     </div>
 
+    <!-- 3.5 PASS DEVICE SCREEN (Local Only) -->
+    <div id="screen-pass-device" class="screen">
+        <h2 class="header-title highlight-red">SECRET PHASE</h2>
+        <div class="panel text-center">
+            <h3 class="mb-2">Pass the device to:</h3>
+            <h1 id="pass-device-name" class="highlight-gold" style="font-size: 3rem;">...</h1>
+        </div>
+        <button class="btn btn-primary mt-3" onclick="confirmDevicePassed()">I AM READY</button>
+    </div>
+
     <!-- 4. ROLE REVEAL -->
     <div id="screen-role" class="screen">
         <h2 class="header-title">YOUR SECRET ROLE</h2>
@@ -157,11 +185,20 @@
         </div>
     </div>
 
-    <!-- 8. VOTING -->
+    <!-- 8. VOTING (Online) -->
     <div id="screen-vote" class="screen">
         <h2 class="header-title highlight-red">VOTE SUSPECT</h2>
         <p class="hint-text">Who is the THEFT?</p>
         <div class="panel scrollable" id="vote-list">
+            <!-- Player vote buttons -->
+        </div>
+    </div>
+    
+    <!-- 8.5 VOTING (Local) -->
+    <div id="screen-local-vote" class="screen">
+        <h2 class="header-title highlight-red">GROUP VERDICT</h2>
+        <p class="hint-text">Discuss and collectively choose who to eliminate.</p>
+        <div class="panel scrollable" id="local-vote-list">
             <!-- Player vote buttons -->
         </div>
     </div>
