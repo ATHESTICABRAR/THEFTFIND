@@ -56,21 +56,21 @@ let usedCluesCache = [];
 // Roles config
 const ROLES = ['THEFT', 'POLICE', 'DETECTIVE', 'INVESTIGATOR'];
 
-// Scenarios
-const SCENARIOS = [
-    {
-        title: "The Royal Diamond",
-        desc: "An expensive diamond has disappeared from the Royal Museum at midnight. The security cameras were disabled for exactly 2 minutes.",
-        clues: [
-            "You found a piece of black fabric near the broken glass.",
-            "The camera logs show someone with admin access disabled them.",
-            "There were muddy footprints leading to the roof.",
-            "You heard someone running in the east corridor.",
-            "The glass was cut with a professional laser tool.",
-            "A suspicious white van was seen leaving the alley."
-        ],
-        theftClue: "You need to convince them you were in the west wing checking the electrical panel when the cameras went out."
-    }
+// Word Pairs (Undercover mechanic)
+const WORD_PAIRS = [
+    ["APPLE", "ORANGE"],
+    ["DOG", "WOLF"],
+    ["OCEAN", "RIVER"],
+    ["CAR", "BUS"],
+    ["SUN", "MOON"],
+    ["GUITAR", "VIOLIN"],
+    ["BURGER", "PIZZA"],
+    ["MOUNTAIN", "HILL"],
+    ["PENCIL", "PEN"],
+    ["TEA", "COFFEE"],
+    ["SUMMER", "WINTER"],
+    ["HOSPITAL", "CLINIC"],
+    ["AIRPLANE", "HELICOPTER"]
 ];
 
 function navTo(screenId) {
@@ -289,6 +289,10 @@ function handleHostData(conn, data) {
             gameState.readyCount = 0;
         }
     }
+    else if (data.type === 'ALLEGIANCE') {
+        gameState.investigatorAlliances = gameState.investigatorAlliances || {};
+        gameState.investigatorAlliances[conn.peer] = data.side;
+    }
     else if (data.type === 'READY_DISCUSSION') {
         gameState.readyCount++;
         if (gameState.readyCount === gameState.players.length) {
@@ -300,6 +304,9 @@ function handleHostData(conn, data) {
     else if (data.type === 'VOTE') {
         gameState.votes[conn.peer] = data.voteId;
         checkVotesComplete();
+    }
+    else if (data.type === 'SUBMIT_GUESS') {
+        processTheftGuess(data.guess);
     }
 }
 
@@ -342,10 +349,13 @@ function startGame() {
     roles.sort(() => Math.random() - 0.5);
     gameState.players.forEach((p, i) => p.role = roles[i]);
 
-    let scenario = SCENARIOS[0];
+    let pair = WORD_PAIRS[Math.floor(Math.random() * WORD_PAIRS.length)];
+    let majorityWord = Math.random() > 0.5 ? pair[0] : pair[1];
+    let minorityWord = majorityWord === pair[0] ? pair[1] : pair[0];
     
-    // Distribute clues
-    usedCluesCache = [...scenario.clues].sort(() => Math.random() - 0.5);
+    // Save these to game state so local pass-and-play can use them
+    gameState.currentMajorityWord = majorityWord;
+    gameState.currentMinorityWord = minorityWord;
     
     gameState.phase = 'ROLE';
     gameState.readyCount = 0;
@@ -355,14 +365,14 @@ function startGame() {
         passDeviceToNext();
     } else {
         gameState.players.forEach(p => {
-            let pClue = p.role === 'THEFT' ? scenario.theftClue : usedCluesCache.pop() || "You didn't notice anything useful.";
+            let pWord = (p.role === 'THEFT') ? minorityWord : majorityWord;
             
             let msg = {
                 type: 'START',
                 role: p.role,
-                scenarioTitle: scenario.title,
-                scenarioDesc: scenario.desc,
-                clue: pClue
+                scenarioTitle: "Memorize your word!",
+                scenarioDesc: "",
+                clue: pWord
             };
 
             if (p.host) {
@@ -376,13 +386,13 @@ function startGame() {
 
 function passDeviceToNext() {
     if (localCurrentPlayerIndex >= gameState.players.length) {
-        // Everyone saw their roles, time to show scenario together
+        // Everyone saw their roles
         navTo('screen-scenario');
-        document.getElementById('scenario-title').innerText = SCENARIOS[0].title;
-        document.getElementById('scenario-desc').dataset.text = SCENARIOS[0].desc;
-        document.getElementById('player-clue').dataset.text = "Discuss out loud. What are your individual clues?";
+        document.getElementById('scenario-title').innerText = "DISCUSS";
+        document.getElementById('scenario-desc').dataset.text = "";
+        document.getElementById('player-clue').dataset.text = "Take turns saying ONE word to describe your secret word. Find the THEFT!";
         typeWriter('scenario-desc', 20);
-        setTimeout(() => typeWriter('player-clue', 30), 1000);
+        setTimeout(() => typeWriter('player-clue', 20), 500);
         return;
     }
     
@@ -393,13 +403,13 @@ function passDeviceToNext() {
 
 function confirmDevicePassed() {
     let p = gameState.players[localCurrentPlayerIndex];
-    let pClue = p.role === 'THEFT' ? SCENARIOS[0].theftClue : (usedCluesCache.pop() || "You didn't notice anything useful.");
+    let pWord = (p.role === 'THEFT') ? gameState.currentMinorityWord : gameState.currentMajorityWord;
     
     let msg = {
         role: p.role,
-        scenarioTitle: SCENARIOS[0].title,
-        scenarioDesc: "Read this screen alone. Memorize your clue.",
-        clue: pClue
+        scenarioTitle: "Memorize your word!",
+        scenarioDesc: "",
+        clue: pWord
     };
     setupRoleScreen(msg);
 }
@@ -426,6 +436,8 @@ function handleClientData(data) {
         startDiscussionClient(data.time || 90);
     } else if (data.type === 'GOTO_VOTE') {
         setupVoteScreen(data.alivePlayers);
+    } else if (data.type === 'GOTO_THEFT_GUESS') {
+        startTheftGuessPhase(data.elimPlayer, data.traitors);
     } else if (data.type === 'RESULT') {
         showResultScreen(data);
     } else if (data.type === 'END') {
@@ -448,6 +460,7 @@ function setupRoleScreen(data) {
     
     document.getElementById('role-card').classList.remove('is-flipped');
     document.getElementById('role-ready-btn').classList.add('hidden');
+    document.getElementById('investigator-choice').classList.add('hidden');
     navTo('screen-role');
 }
 
@@ -470,7 +483,31 @@ function toggleRoleCard() {
     const card = document.getElementById('role-card');
     card.classList.toggle('is-flipped');
     if (card.classList.contains('is-flipped')) {
-        document.getElementById('role-ready-btn').classList.remove('hidden');
+        if (myRole === 'INVESTIGATOR') {
+            document.getElementById('investigator-choice').classList.remove('hidden');
+            document.getElementById('role-ready-btn').classList.add('hidden');
+        } else {
+            document.getElementById('role-ready-btn').classList.remove('hidden');
+            document.getElementById('investigator-choice').classList.add('hidden');
+        }
+    }
+}
+
+function chooseAllegiance(side) {
+    if (isLocalGame) {
+        let p = gameState.players[localCurrentPlayerIndex];
+        gameState.investigatorAlliances = gameState.investigatorAlliances || {};
+        gameState.investigatorAlliances[p.id] = side;
+        readyForScenario();
+    } else {
+        if (isHost) {
+            gameState.investigatorAlliances = gameState.investigatorAlliances || {};
+            gameState.investigatorAlliances[peer.id] = side;
+        } else {
+            hostConnection.send({ type: 'ALLEGIANCE', side: side });
+        }
+        document.getElementById('investigator-choice').classList.add('hidden');
+        readyForScenario();
     }
 }
 
@@ -601,6 +638,67 @@ function setupVoteScreen(alivePlayers) {
     });
 }
 
+// --- THEFT GUESS PHASE ---
+let currentTheftPlayer = null;
+
+function startTheftGuessPhase(elimPlayer, traitors) {
+    navTo('screen-theft-guess');
+    currentTheftPlayer = elimPlayer;
+    
+    let revealDiv = document.getElementById('traitor-reveal');
+    if (traitors && traitors.length > 0) {
+        let names = traitors.map(t => t.name).join(", ");
+        revealDiv.innerText = `TRAITOR REVEALED!\n${names} secretly allied with the THEFT!\nThey can now help the THEFT guess the word!`;
+        revealDiv.classList.remove('hidden');
+    } else {
+        revealDiv.innerText = "No investigators allied with the THEFT. They are on their own!";
+        revealDiv.classList.remove('hidden');
+    }
+    
+    if (isLocalGame || myRole === 'THEFT') {
+        document.getElementById('theft-input-area').classList.remove('hidden');
+        document.getElementById('theft-waiting-area').classList.add('hidden');
+    } else {
+        document.getElementById('theft-input-area').classList.add('hidden');
+        document.getElementById('theft-waiting-area').classList.remove('hidden');
+    }
+}
+
+function submitTheftGuess() {
+    let guess = document.getElementById('theft-word-guess').value.trim();
+    if (!guess) return alert("Enter a guess!");
+    
+    if (isLocalGame) {
+        processTheftGuess(guess);
+    } else {
+        if (isHost) processTheftGuess(guess);
+        else hostConnection.send({ type: 'SUBMIT_GUESS', guess: guess });
+    }
+}
+
+function processTheftGuess(guess) {
+    let correct = gameState.currentMajorityWord.toUpperCase();
+    let isCorrect = guess.toUpperCase() === correct;
+    
+    let res = {};
+    if (isCorrect) {
+        res = { type:'END', winner:'THEFTS', elimName: currentTheftPlayer ? currentTheftPlayer.name : 'Theft', elimRole: 'THEFT', msg: `THEFT correctly guessed "${correct}"!` };
+    } else {
+        res = { type:'END', winner:'INVESTIGATORS', elimName: currentTheftPlayer ? currentTheftPlayer.name : 'Theft', elimRole: 'THEFT', msg: `THEFT guessed wrong! The word was "${correct}".` };
+    }
+    
+    if (!isLocalGame) broadcast(res);
+    showEndScreen(res);
+    
+    DatabaseService.saveMatchResult({
+        roomCode: roomCode,
+        winner: isCorrect ? 'THEFTS' : 'INVESTIGATORS',
+        elimName: currentTheftPlayer ? currentTheftPlayer.name : 'Theft',
+        players: gameState.players,
+        winningTeam: isCorrect ? 'THEFTS' : 'INVESTIGATORS'
+    });
+}
+
 function checkVotesComplete() {
     let aliveCount = gameState.players.filter(p=>p.isAlive).length;
     let voteCount = Object.keys(gameState.votes).length;
@@ -628,22 +726,23 @@ function checkVotesComplete() {
         let innocentsAlive = gameState.players.filter(p=> p.role!=='THEFT' && p.isAlive).length;
 
         if (theftsAlive === 0) {
-            let res = { type:'END', winner:'INVESTIGATORS', elimName: elimPlayer?elimPlayer.name:'No one', elimRole: elimPlayer?elimPlayer.role:'' };
-            if (!isLocalGame) broadcast(res);
-            showEndScreen(res);
-            // Save to Mongo
-            DatabaseService.saveMatchResult({
-                roomCode: roomCode,
-                winner: 'INVESTIGATORS',
-                elimName: elimPlayer?elimPlayer.name:'No one',
-                players: gameState.players,
-                winningTeam: 'INVESTIGATORS'
-            });
+            // THEFT is caught! Transition to Theft Guess Phase
+            // Find all traitors (Investigators who chose THEFT side)
+            gameState.investigatorAlliances = gameState.investigatorAlliances || {};
+            let traitors = gameState.players.filter(p => p.role === 'INVESTIGATOR' && gameState.investigatorAlliances[p.id] === 'THEFT');
+            
+            let data = { elimPlayer: elimPlayer, traitors: traitors };
+            if (isLocalGame) {
+                startTheftGuessPhase(data.elimPlayer, data.traitors);
+            } else {
+                broadcast({ type: 'GOTO_THEFT_GUESS', elimPlayer: data.elimPlayer, traitors: data.traitors });
+                startTheftGuessPhase(data.elimPlayer, data.traitors);
+            }
         } else if (theftsAlive >= innocentsAlive) {
+            // THEFT Wins (survived)
             let res = { type:'END', winner:'THEFTS', elimName: elimPlayer?elimPlayer.name:'No one', elimRole: elimPlayer?elimPlayer.role:'' };
             if (!isLocalGame) broadcast(res);
             showEndScreen(res);
-            // Save to Mongo
             DatabaseService.saveMatchResult({
                 roomCode: roomCode,
                 winner: 'THEFTS',
@@ -652,6 +751,7 @@ function checkVotesComplete() {
                 winningTeam: 'THEFTS'
             });
         } else {
+            // Someone else eliminated, game continues or resolves
             let res = { type:'RESULT', name: elimPlayer?elimPlayer.name:'No one', role: elimPlayer?elimPlayer.role:'Unknown' };
             if (!isLocalGame) broadcast(res);
             showResultScreen(res);
@@ -676,10 +776,10 @@ function hostNextPhase() {
 
 function showEndScreen(data) {
     navTo('screen-end');
-    let title = data.winner === 'THEFTS' ? 'THEFT ESCAPES' : 'THEFT CAUGHT';
+    let title = data.winner === 'THEFTS' ? 'THEFT WINS' : 'THEFT CAUGHT';
     document.getElementById('end-title').innerText = title;
     
-    let desc = data.winner === 'THEFTS' ? 'The innocent were outsmarted.' : 'Great job investigators!';
+    let desc = data.msg ? data.msg : (data.winner === 'THEFTS' ? 'The innocent were outsmarted.' : 'Great job investigators!');
     document.getElementById('end-desc').innerText = desc;
 }
 

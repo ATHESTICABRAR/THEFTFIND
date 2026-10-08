@@ -144,17 +144,21 @@
         </div>
         <p class="hint-text mt-3">Do not show your screen to anyone.</p>
         <button class="btn btn-accent mt-3 hidden" id="role-ready-btn" onclick="readyForScenario()">I UNDERSTAND</button>
+        
+        <div id="investigator-choice" class="hidden mt-2" style="width: 100%; max-width: 350px;">
+            <p class="hint-text mb-1 text-center">Choose your secret allegiance:</p>
+            <button class="btn btn-accent mb-1" style="box-shadow: 0 4px 15px rgba(69,123,157,0.4);" onclick="chooseAllegiance('POLICE')">WORK WITH POLICE 👮</button>
+            <button class="btn btn-primary" style="box-shadow: 0 4px 15px rgba(230,57,70,0.4);" onclick="chooseAllegiance('THEFT')">WORK WITH THEFT 🥷</button>
+        </div>
     </div>
 
-    <!-- 5. CRIME SCENE (SCENARIO) -->
+    <!-- 5. SECRET WORD REVEAL -->
     <div id="screen-scenario" class="screen">
-        <h2 class="header-title highlight-red">CRIME SCENE</h2>
-        <div class="panel">
-            <h3 id="scenario-title">The Royal Diamond</h3>
-            <p id="scenario-desc" class="story-text">...</p>
-            <hr>
-            <h4 class="highlight-gold">YOUR CLUE:</h4>
-            <p id="player-clue" class="clue-text">...</p>
+        <h2 class="header-title highlight-red">SECRET WORD</h2>
+        <div class="panel text-center">
+            <h3 id="scenario-title" class="mb-2">Memorize your word!</h3>
+            <p id="scenario-desc" class="story-text hidden">...</p>
+            <h1 id="player-clue" class="highlight-gold" style="font-size: 3.5rem; letter-spacing: 2px;">...</h1>
         </div>
         <button class="btn btn-primary mt-3" onclick="readyForDiscussion()">CONTINUE</button>
     </div>
@@ -200,6 +204,24 @@
         <p class="hint-text">Discuss and collectively choose who to eliminate.</p>
         <div class="panel scrollable" id="local-vote-list">
             <!-- Player vote buttons -->
+        </div>
+    </div>
+
+    <!-- 8.8 THEFT GUESS PHASE -->
+    <div id="screen-theft-guess" class="screen">
+        <h2 class="header-title highlight-red">THEFT CAUGHT!</h2>
+        <div class="panel text-center">
+            <p class="story-text mb-1">But the THEFT has one last chance to guess the Police's secret word!</p>
+            <div id="traitor-reveal" class="mt-2 mb-2 highlight-gold" style="font-size:1.15rem; white-space:pre-line; border: 1px solid var(--accent-gold); padding: 10px; border-radius: 8px;">
+                <!-- Revealed traitors injected here -->
+            </div>
+            <div id="theft-input-area" class="hidden">
+                <input type="text" id="theft-word-guess" class="input-dark text-center" placeholder="ENTER POLICE WORD">
+                <button class="btn btn-primary mt-2" onclick="submitTheftGuess()">SUBMIT GUESS</button>
+            </div>
+            <div id="theft-waiting-area" class="hidden">
+                <p class="hint-text">Waiting for the THEFT to make their guess...</p>
+            </div>
         </div>
     </div>
 
