@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>THEFTFIND</title>
+    <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;700&family=Roboto:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <!-- PeerJS for Serverless Multiplayer -->
+    <script src="https://unpkg.com/peerjs@1.5.1/dist/peerjs.min.js"></script>
+</head>
+<body>
+    <div class="noise-overlay"></div>
+    <div class="background-overlay"></div>
+
+    <!-- 1. HOME SCREEN -->
+    <div id="screen-home" class="screen active">
+        <div class="logo-container">
+            <h1 class="main-title">THEFT<span class="highlight-red">FIND</span></h1>
+            <p class="subtitle">Can you find the thief?</p>
+        </div>
+        
+        <div class="menu-buttons">
+            <input type="text" id="player-name" placeholder="Enter Your Name" class="input-dark">
+            <button class="btn btn-primary" onclick="showLobbySetup()">PLAY</button>
+            <button class="btn btn-secondary" onclick="navTo('screen-howto')">HOW TO PLAY</button>
+        </div>
+    </div>
+
+    <!-- 2. LOBBY SETUP (Create/Join) -->
+    <div id="screen-setup" class="screen">
+        <h2 class="header-title">MULTIPLAYER</h2>
+        <div class="panel">
+            <button class="btn btn-primary" onclick="showCreateRoomPopup()">CREATE ROOM</button>
+            <div class="divider"><span>OR JOIN</span></div>
+            <input type="text" id="join-code" placeholder="ENTER ROOM NAME" class="input-dark text-center">
+            <input type="password" id="join-password" placeholder="ENTER PASSWORD (OPTIONAL)" class="input-dark text-center">
+            <button class="btn btn-accent" onclick="joinRoom()">JOIN ROOM</button>
+        </div>
+        <button class="btn btn-outline mt-3" onclick="navTo('screen-home')">BACK</button>
+    </div>
+
+    <!-- CREATE ROOM POPUP -->
+    <div id="overlay-create" class="overlay">
+        <div class="panel text-center" style="max-width: 350px;">
+            <h2 class="header-title highlight-gold">CREATE ROOM</h2>
+            <input type="text" id="create-room-name" placeholder="ROOM NAME" class="input-dark text-center mt-2">
+            <input type="password" id="create-room-pass" placeholder="PASSWORD (OPTIONAL)" class="input-dark text-center">
+            
+            <h4 class="highlight-gold mt-1 mb-1">ROLES & MEMBERS</h4>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
+                <span>🥷 THEFT:</span> <input type="number" id="count-theft" value="1" min="1" max="5" class="input-dark text-center" style="width:60px; padding:5px; margin:0;">
+            </div>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
+                <span>👮 POLICE:</span> <input type="number" id="count-police" value="1" min="0" max="3" class="input-dark text-center" style="width:60px; padding:5px; margin:0;">
+            </div>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
+                <span>🔍 DETECTIVE:</span> <input type="number" id="count-detective" value="1" min="0" max="3" class="input-dark text-center" style="width:60px; padding:5px; margin:0;">
+            </div>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+                <span>🕵️ INVESTIGATOR:</span> <input type="number" id="count-investigator" value="3" min="1" max="15" class="input-dark text-center" style="width:60px; padding:5px; margin:0;">
+            </div>
+
+            <button class="btn btn-primary mt-2" onclick="confirmCreateRoom()">CONFIRM & CREATE</button>
+            <button class="btn btn-outline" onclick="closeCreateRoomPopup()">CANCEL</button>
+        </div>
+    </div>
+
+    <!-- 3. LOBBY -->
+    <div id="screen-lobby" class="screen">
+        <h2 class="header-title">ROOM: <span id="room-code-display" class="highlight-gold">...</span></h2>
+        <div class="panel">
+            <h3>PLAYERS (<span id="player-count">1</span>/10)</h3>
+            <ul id="player-list" class="list-dark">
+                <!-- Players injected here -->
+            </ul>
+        </div>
+        <div id="host-controls" class="hidden">
+            <button class="btn btn-primary mt-3" id="start-game-btn" onclick="startGame()">START GAME</button>
+            <p class="hint-text mt-1">Needs at least 3 players.</p>
+        </div>
+        <div id="client-waiting" class="hidden mt-3">
+            <p class="hint-text">Waiting for host to start...</p>
+        </div>
+    </div>
+
+    <!-- 4. ROLE REVEAL -->
+    <div id="screen-role" class="screen">
+        <h2 class="header-title">YOUR SECRET ROLE</h2>
+        <div class="card-flip-container" onclick="toggleRoleCard()">
+            <div class="card-flip-inner" id="role-card">
+                <div class="card-front">
+                    <p>TAP TO REVEAL</p>
+                    <div class="fingerprint-icon">👆</div>
+                </div>
+                <div class="card-back">
+                    <h1 id="role-name">INVESTIGATOR</h1>
+                    <div class="role-icon" id="role-icon">🕵️</div>
+                    <p id="role-desc">Find the THEFT before they escape.</p>
+                </div>
+            </div>
+        </div>
+        <p class="hint-text mt-3">Do not show your screen to anyone.</p>
+        <button class="btn btn-accent mt-3 hidden" id="role-ready-btn" onclick="readyForScenario()">I UNDERSTAND</button>
+    </div>
+
+    <!-- 5. CRIME SCENE (SCENARIO) -->
+    <div id="screen-scenario" class="screen">
+        <h2 class="header-title highlight-red">CRIME SCENE</h2>
+        <div class="panel">
+            <h3 id="scenario-title">The Royal Diamond</h3>
+            <p id="scenario-desc" class="story-text">...</p>
+            <hr>
+            <h4 class="highlight-gold">YOUR CLUE:</h4>
+            <p id="player-clue" class="clue-text">...</p>
+        </div>
+        <button class="btn btn-primary mt-3" onclick="readyForDiscussion()">CONTINUE</button>
+    </div>
+
+    <!-- 6. DISCUSSION -->
+    <div id="screen-discussion" class="screen">
+        <h2 class="header-title">DISCUSSION</h2>
+        <div class="timer-circle">
+            <span id="timer-display">90</span>
+        </div>
+        <p class="hint-text">Discuss the clues. Who is acting suspicious?</p>
+        <div class="panel scrollable mt-2">
+            <ul id="discussion-player-list" class="list-dark">
+                <!-- Status of players -->
+            </ul>
+        </div>
+        <div id="host-discussion-controls" class="hidden mt-2">
+             <button class="btn btn-outline" onclick="endDiscussionEarly()">END DISCUSSION</button>
+        </div>
+    </div>
+
+    <!-- 7. INVESTIGATION (ACTION PHASE) -->
+    <div id="screen-action" class="screen">
+        <h2 class="header-title">NIGHT PHASE</h2>
+        <div class="panel" id="action-panel">
+            <!-- Dynamic content based on role -->
+            <p>Wait while special roles perform their actions...</p>
+        </div>
+    </div>
+
+    <!-- 8. VOTING -->
+    <div id="screen-vote" class="screen">
+        <h2 class="header-title highlight-red">VOTE SUSPECT</h2>
+        <p class="hint-text">Who is the THEFT?</p>
+        <div class="panel scrollable" id="vote-list">
+            <!-- Player vote buttons -->
+        </div>
+    </div>
+
+    <!-- 9. RESULT / ELIMINATION -->
+    <div id="screen-result" class="screen">
+        <h2 class="header-title" id="result-title">VOTING RESULT</h2>
+        <div class="panel text-center">
+            <h3 id="eliminated-name">...</h3>
+            <p id="eliminated-role-reveal" class="story-text highlight-red mt-2">...</p>
+        </div>
+        <button class="btn btn-primary mt-3 hidden" id="next-round-btn" onclick="hostNextPhase()">CONTINUE</button>
+        <p id="waiting-host-result" class="hint-text mt-3">Waiting for host...</p>
+    </div>
+
+    <!-- 10. GAME OVER -->
+    <div id="screen-end" class="screen">
+        <h1 class="main-title" id="end-title">THEFT WINS</h1>
+        <div class="panel text-center">
+            <p id="end-desc" class="story-text">...</p>
+        </div>
+        <button class="btn btn-primary mt-3" onclick="returnToLobby()">RETURN TO LOBBY</button>
+    </div>
+
+    <!-- HOW TO PLAY -->
+    <div id="screen-howto" class="screen">
+        <h2 class="header-title">HOW TO PLAY</h2>
+        <div class="panel scrollable text-left">
+            <h3 class="highlight-gold">ROLES</h3>
+            <p><strong>🕵️ INVESTIGATOR:</strong> Find clues, discuss, and vote out the THEFT.</p>
+            <p><strong>👮 POLICE:</strong> Once per game, secretly investigate a player to learn if they are innocent or the THEFT.</p>
+            <p><strong>🔍 DETECTIVE:</strong> Gets an extra powerful clue about the crime scene.</p>
+            <p><strong>🥷 THEFT:</strong> You are the criminal. Lie, blend in, and survive the votes!</p>
+            <h3 class="highlight-gold mt-2">FLOW</h3>
+            <p>1. Roles are assigned.<br>2. Crime is revealed with clues.<br>3. Discuss for 90 seconds.<br>4. Vote a suspect out.<br>5. Game ends when THEFT is caught or THEFT outnumbers innocent players.</p>
+        </div>
+        <button class="btn btn-primary mt-3" onclick="navTo('screen-home')">BACK</button>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
