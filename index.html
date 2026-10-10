@@ -4,6 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>THEFTFIND</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#ff2a40">
+    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/2060/2060284.png">
     <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;700&family=Roboto:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
     <!-- PeerJS for Serverless Multiplayer -->
@@ -169,16 +172,19 @@
     <!-- 6. DISCUSSION -->
     <div id="screen-discussion" class="screen">
         <h2 class="header-title">DISCUSSION</h2>
-        <div class="timer-circle">
+        <div class="timer-circle mb-2">
             <span id="timer-display">90</span>
         </div>
-        <p class="hint-text">Discuss the clues. Who is acting suspicious?</p>
-        <div class="panel scrollable mt-2">
-            <ul id="discussion-player-list" class="list-dark">
-                <!-- Status of players -->
-            </ul>
+        <p class="hint-text mb-2">Each player says ONE word to describe their secret word.</p>
+        
+        <div class="panel">
+            <h4 class="highlight-gold mb-1 text-center">SPEAKING ORDER</h4>
+            <ol id="speaker-order-list" class="list-dark text-left" style="padding-left: 20px; font-size: 1.1rem;">
+                <!-- Speakers injected here -->
+            </ol>
         </div>
-        <div id="host-discussion-controls" class="hidden mt-2">
+
+        <div id="host-discussion-controls" class="hidden mt-2 text-center">
              <button class="btn btn-outline" onclick="endDiscussionEarly()">END DISCUSSION</button>
         </div>
     </div>
@@ -264,5 +270,14 @@
     </div>
 
     <script src="script.js"></script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./sw.js').then(reg => {
+                    console.log('Service Worker registered!', reg);
+                });
+            });
+        }
+    </script>
 </body>
 </html>

@@ -437,7 +437,7 @@ function handleClientData(data) {
     } else if (data.type === 'START') {
         setupRoleScreen(data);
     } else if (data.type === 'GOTO_DISCUSSION') {
-        startDiscussionClient(data.time || 90);
+        startDiscussionClient(data.time || 90, data.order);
     } else if (data.type === 'GOTO_VOTE') {
         setupVoteScreen(data.alivePlayers);
     } else if (data.type === 'GOTO_THEFT_GUESS') {
@@ -546,18 +546,28 @@ function readyForDiscussion() {
 // --- DISCUSSION ---
 let discTimer;
 function startDiscussionHost() {
-    if (!isLocalGame) broadcast({ type: 'GOTO_DISCUSSION', time: 90 });
-    startDiscussionClient(90);
+    let order = [...gameState.players].sort(() => Math.random() - 0.5).map(p => p.name);
+    if (!isLocalGame) broadcast({ type: 'GOTO_DISCUSSION', time: 90, order: order });
+    startDiscussionClient(90, order);
     document.getElementById('host-discussion-controls').classList.remove('hidden');
 }
 
-function startDiscussionClient(time) {
+function startDiscussionClient(time, order) {
     navTo('screen-discussion');
     let t = time;
     document.getElementById('timer-display').innerText = t;
     
-    let ul = document.getElementById('discussion-player-list');
-    ul.innerHTML = ''; // For simplicity, we won't live-update status here unless needed
+    let ol = document.getElementById('speaker-order-list');
+    if (ol) {
+        ol.innerHTML = '';
+        if (order && order.length > 0) {
+            order.forEach((name, idx) => {
+                let li = document.createElement('li');
+                li.innerHTML = idx === 0 ? `<span class="highlight-red" style="font-weight: bold;">${name} (Starts)</span>` : name;
+                ol.appendChild(li);
+            });
+        }
+    }
 
     clearInterval(discTimer);
     discTimer = setInterval(() => {
