@@ -1,4 +1,4 @@
-const CACHE_NAME = 'theftfind-v1';
+const CACHE_NAME = 'theftfind-v2';
 const ASSETS = [
   './',
   './index.html',

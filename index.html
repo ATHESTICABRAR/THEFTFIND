@@ -169,23 +169,39 @@
         </div>
     </div>
 
-    <!-- 6. DISCUSSION -->
+    <!-- 6. CLUES & DISCUSSION -->
     <div id="screen-discussion" class="screen">
-        <h2 class="header-title">DISCUSSION</h2>
-        <div class="timer-circle mb-2">
-            <span id="timer-display">90</span>
-        </div>
-        <p class="hint-text mb-2">Each player says ONE word to describe their secret word.</p>
+        <h2 class="header-title">CLUE PHASE</h2>
         
-        <div class="panel">
-            <h4 class="highlight-gold mb-1 text-center">SPEAKING ORDER</h4>
-            <ol id="speaker-order-list" class="list-dark text-left" style="padding-left: 20px; font-size: 1.1rem;">
-                <!-- Speakers injected here -->
-            </ol>
+        <div class="timer-circle mb-1">
+            <span id="timer-display">10</span>
+        </div>
+        
+        <div id="turn-banner" class="highlight-gold text-center mb-2" style="font-size: 1.25rem; font-weight: bold; min-height: 30px;">
+            STARTING CLUE PHASE...
+        </div>
+
+        <!-- ACTIVE PLAYER CLUE INPUT -->
+        <div id="turn-input-container" class="hidden text-center" style="width: 100%; max-width: 400px; margin-bottom: 15px;">
+            <input type="text" id="turn-clue-input" class="input-dark text-center" placeholder="Type 1 clue word..." maxlength="25" autocomplete="off" onkeydown="if(event.key==='Enter') submitPlayerClue()">
+            <button class="btn btn-primary" id="turn-submit-btn" onclick="submitPlayerClue()">SUBMIT WORD</button>
+        </div>
+
+        <!-- WAITING INDICATOR -->
+        <div id="turn-waiting-container" class="hidden text-center mb-2">
+            <p class="hint-text" id="turn-waiting-text">Waiting for player to give word...</p>
+        </div>
+        
+        <!-- REALTIME WORDS GIVEN BOARD -->
+        <div class="panel scrollable" style="max-height: 250px;">
+            <h4 class="highlight-gold mb-1 text-center">WORDS GIVEN</h4>
+            <ul id="clue-board-list" class="list-dark">
+                <!-- Players and words injected here -->
+            </ul>
         </div>
 
         <div id="host-discussion-controls" class="hidden mt-2 text-center">
-             <button class="btn btn-outline" onclick="endDiscussionEarly()">END DISCUSSION</button>
+             <button class="btn btn-outline" style="padding: 10px;" onclick="skipCurrentTurnHost()">SKIP CURRENT TURN</button>
         </div>
     </div>
 
@@ -201,7 +217,15 @@
     <!-- 8. VOTING (Online) -->
     <div id="screen-vote" class="screen">
         <h2 class="header-title highlight-red">VOTE SUSPECT</h2>
-        <p class="hint-text">Who is the THEFT?</p>
+        <p class="hint-text">Review the words given and vote out the THEFT!</p>
+
+        <div class="panel mb-2" style="padding: 15px; max-height: 160px; overflow-y: auto;">
+            <h4 class="highlight-gold mb-1 text-center" style="font-size: 1rem;">CLUES THIS ROUND</h4>
+            <ul id="vote-clues-summary" class="list-dark" style="margin-bottom: 0;">
+                <!-- Clues summary injected here -->
+            </ul>
+        </div>
+
         <div class="panel scrollable" id="vote-list">
             <!-- Player vote buttons -->
         </div>
@@ -210,7 +234,15 @@
     <!-- 8.5 VOTING (Local) -->
     <div id="screen-local-vote" class="screen">
         <h2 class="header-title highlight-red">GROUP VERDICT</h2>
-        <p class="hint-text">Discuss and collectively choose who to eliminate.</p>
+        <p class="hint-text">Review the clues and choose who to eliminate.</p>
+
+        <div class="panel mb-2" style="padding: 15px; max-height: 160px; overflow-y: auto;">
+            <h4 class="highlight-gold mb-1 text-center" style="font-size: 1rem;">CLUES THIS ROUND</h4>
+            <ul id="local-vote-clues-summary" class="list-dark" style="margin-bottom: 0;">
+                <!-- Clues summary injected here -->
+            </ul>
+        </div>
+
         <div class="panel scrollable" id="local-vote-list">
             <!-- Player vote buttons -->
         </div>

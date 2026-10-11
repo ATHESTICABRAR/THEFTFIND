@@ -294,7 +294,6 @@ function handleHostData(conn, data) {
     else if (data.type === 'READY_ROLE') {
         gameState.readyCount++;
         if (gameState.readyCount === gameState.players.length) {
-            broadcast({ type: 'GOTO_DISCUSSION' });
             startDiscussionHost();
             gameState.readyCount = 0;
         }
@@ -306,10 +305,12 @@ function handleHostData(conn, data) {
     else if (data.type === 'READY_DISCUSSION') {
         gameState.readyCount++;
         if (gameState.readyCount === gameState.players.length) {
-            broadcast({ type: 'GOTO_DISCUSSION' });
             startDiscussionHost();
             gameState.readyCount = 0;
         }
+    }
+    else if (data.type === 'SUBMIT_CLUE') {
+        handlePlayerClueSubmission(conn.peer, data.clue);
     }
     else if (data.type === 'VOTE') {
         gameState.votes[conn.peer] = data.voteId;
@@ -436,10 +437,12 @@ function handleClientData(data) {
         updateLobbyUI(data.players, data.max);
     } else if (data.type === 'START') {
         setupRoleScreen(data);
-    } else if (data.type === 'GOTO_DISCUSSION') {
-        startDiscussionClient(data.time || 90, data.order);
+    } else if (data.type === 'START_TURN') {
+        setupTurnClient(data);
+    } else if (data.type === 'ALL_CLUES_DONE') {
+        showAllCluesDoneClient(data.clues);
     } else if (data.type === 'GOTO_VOTE') {
-        setupVoteScreen(data.alivePlayers);
+        setupVoteScreen(data.alivePlayers, data.clues);
     } else if (data.type === 'GOTO_THEFT_GUESS') {
         startTheftGuessPhase(data.elimPlayer, data.traitors);
     } else if (data.type === 'RESULT') {
@@ -543,103 +546,306 @@ function readyForDiscussion() {
     event.target.disabled = true;
 }
 
-// --- DISCUSSION ---
-let discTimer;
+// --- TURN-BASED CLUE PHASE (10 SECONDS PER PLAYER) ---
+let clientTurnTimer = null;
+
 function startDiscussionHost() {
-    let order = [...gameState.players].sort(() => Math.random() - 0.5).map(p => p.name);
-    if (!isLocalGame) broadcast({ type: 'GOTO_DISCUSSION', time: 90, order: order });
-    startDiscussionClient(90, order);
-    document.getElementById('host-discussion-controls').classList.remove('hidden');
+    if (gameState.turnTimer) clearInterval(gameState.turnTimer);
+    let alive = gameState.players.filter(p => p.isAlive);
+    // Shuffle speaking/clue order randomly
+    gameState.turnOrder = [...alive].sort(() => Math.random() - 0.5);
+    gameState.roundClues = {};
+    gameState.currentTurnIndex = 0;
+    runTurnHost();
 }
 
-function startDiscussionClient(time, order) {
-    navTo('screen-discussion');
-    let t = time;
-    document.getElementById('timer-display').innerText = t;
+function runTurnHost() {
+    if (gameState.turnTimer) clearInterval(gameState.turnTimer);
     
-    let ol = document.getElementById('speaker-order-list');
-    if (ol) {
-        ol.innerHTML = '';
-        if (order && order.length > 0) {
-            order.forEach((name, idx) => {
-                let li = document.createElement('li');
-                li.innerHTML = idx === 0 ? `<span class="highlight-red" style="font-weight: bold;">${name} (Starts)</span>` : name;
-                ol.appendChild(li);
-            });
+    // Check if all alive players have completed their turns
+    if (!gameState.turnOrder || gameState.currentTurnIndex >= gameState.turnOrder.length) {
+        let allClues = gameState.turnOrder.map(p => ({
+            id: p.id,
+            name: p.name,
+            clue: gameState.roundClues[p.id] || '[NO WORD]'
+        }));
+        
+        if (!isLocalGame) {
+            broadcast({ type: 'ALL_CLUES_DONE', clues: allClues });
         }
+        showAllCluesDoneClient(allClues);
+        
+        // Wait 2.5 seconds so all players can review all clues, then transition to voting!
+        setTimeout(() => {
+            let alive = gameState.players.filter(p => p.isAlive).map(p => ({ id: p.id, name: p.name }));
+            if (isLocalGame) {
+                setupLocalVoteScreen(alive, allClues);
+            } else {
+                broadcast({ type: 'GOTO_VOTE', alivePlayers: alive, clues: allClues });
+                setupVoteScreen(alive, allClues);
+                gameState.votes = {};
+            }
+        }, 2500);
+        return;
     }
-
-    clearInterval(discTimer);
-    discTimer = setInterval(() => {
-        t--;
-        document.getElementById('timer-display').innerText = t;
-        if (t <= 0) {
-            clearInterval(discTimer);
-            if(isHost || isLocalGame) endDiscussionEarly();
+    
+    let currentP = gameState.turnOrder[gameState.currentTurnIndex];
+    let turnData = {
+        type: 'START_TURN',
+        playerId: currentP.id,
+        playerName: currentP.name,
+        turnIndex: gameState.currentTurnIndex,
+        totalTurns: gameState.turnOrder.length,
+        turnOrder: gameState.turnOrder.map(p => ({
+            id: p.id,
+            name: p.name,
+            clue: gameState.roundClues[p.id] || ''
+        })),
+        time: 10
+    };
+    
+    if (!isLocalGame) broadcast(turnData);
+    setupTurnClient(turnData);
+    
+    // Host authoritative 10-second turn timer
+    let timeLeft = 10;
+    gameState.turnTimer = setInterval(() => {
+        timeLeft--;
+        if (timeLeft <= 0) {
+            clearInterval(gameState.turnTimer);
+            if (!gameState.roundClues[currentP.id]) {
+                gameState.roundClues[currentP.id] = '[TIME OUT]';
+            }
+            gameState.currentTurnIndex++;
+            runTurnHost();
         }
     }, 1000);
 }
 
-function endDiscussionEarly() {
-    clearInterval(discTimer);
-    let alive = gameState.players.filter(p=>p.isAlive).map(p=>({id:p.id, name:p.name}));
-    
-    if (isLocalGame) {
-        setupLocalVoteScreen(alive);
-    } else {
-        broadcast({ type: 'GOTO_VOTE', alivePlayers: alive });
-        setupVoteScreen(alive);
-        gameState.votes = {};
+function handlePlayerClueSubmission(senderId, clueWord) {
+    let currentP = gameState.turnOrder ? gameState.turnOrder[gameState.currentTurnIndex] : null;
+    if (currentP && (currentP.id === senderId || isLocalGame)) {
+        if (gameState.turnTimer) clearInterval(gameState.turnTimer);
+        let word = (clueWord && clueWord.trim()) ? clueWord.trim().toUpperCase() : '[NO WORD]';
+        gameState.roundClues[currentP.id] = word;
+        gameState.currentTurnIndex++;
+        runTurnHost();
     }
 }
 
-// --- LOCAL VOTING ---
-function setupLocalVoteScreen(alivePlayers) {
+function skipCurrentTurnHost() {
+    if (!isHost && !isLocalGame) return;
+    let currentP = gameState.turnOrder ? gameState.turnOrder[gameState.currentTurnIndex] : null;
+    if (currentP) {
+        if (gameState.turnTimer) clearInterval(gameState.turnTimer);
+        if (!gameState.roundClues[currentP.id]) {
+            gameState.roundClues[currentP.id] = '[SKIPPED]';
+        }
+        gameState.currentTurnIndex++;
+        runTurnHost();
+    }
+}
+
+function submitPlayerClue() {
+    let input = document.getElementById('turn-clue-input');
+    let clue = input.value.trim().toUpperCase();
+    if (!clue) clue = '[NO WORD]';
+    
+    input.value = '';
+    document.getElementById('turn-input-container').classList.add('hidden');
+    
+    if (isLocalGame) {
+        let currentP = gameState.turnOrder[gameState.currentTurnIndex];
+        handlePlayerClueSubmission(currentP ? currentP.id : null, clue);
+    } else {
+        if (isHost) {
+            handlePlayerClueSubmission(peer.id, clue);
+        } else {
+            hostConnection.send({ type: 'SUBMIT_CLUE', clue: clue });
+        }
+    }
+}
+
+function setupTurnClient(data) {
+    navTo('screen-discussion');
+    
+    let hostControls = document.getElementById('host-discussion-controls');
+    if (hostControls) {
+        if (isHost || isLocalGame) hostControls.classList.remove('hidden');
+        else hostControls.classList.add('hidden');
+    }
+    
+    let timerEl = document.getElementById('timer-display');
+    let bannerEl = document.getElementById('turn-banner');
+    let inputContainer = document.getElementById('turn-input-container');
+    let waitingContainer = document.getElementById('turn-waiting-container');
+    let waitingText = document.getElementById('turn-waiting-text');
+    let clueInput = document.getElementById('turn-clue-input');
+    
+    let myId = isHost ? (peer ? peer.id : null) : (peer ? peer.id : null);
+    let isMyTurn = isLocalGame ? true : (myId && data.playerId === myId);
+    
+    // Visual 10s countdown
+    if (clientTurnTimer) clearInterval(clientTurnTimer);
+    let t = data.time || 10;
+    timerEl.innerText = t;
+    clientTurnTimer = setInterval(() => {
+        t--;
+        if (t < 0) t = 0;
+        timerEl.innerText = t;
+        if (t <= 0) clearInterval(clientTurnTimer);
+    }, 1000);
+    
+    if (isMyTurn) {
+        if (isLocalGame) {
+            bannerEl.innerHTML = `<span class="highlight-red">👉 ${data.playerName}'s TURN! ENTER 1 WORD (10s)</span>`;
+        } else {
+            bannerEl.innerHTML = `<span class="highlight-red">👉 YOUR TURN! TYPE 1 WORD CLUE (10s)</span>`;
+        }
+        inputContainer.classList.remove('hidden');
+        waitingContainer.classList.add('hidden');
+        clueInput.value = '';
+        setTimeout(() => clueInput.focus(), 100);
+    } else {
+        bannerEl.innerHTML = `<span>TURN ${data.turnIndex + 1}/${data.totalTurns}: <strong class="highlight-gold">${data.playerName}</strong></span>`;
+        inputContainer.classList.add('hidden');
+        waitingContainer.classList.remove('hidden');
+        waitingText.innerText = `Waiting for ${data.playerName} to enter their word...`;
+    }
+    
+    updateClueBoardUI(data.turnOrder, data.playerId);
+}
+
+function updateClueBoardUI(turnOrder, activePlayerId) {
+    let list = document.getElementById('clue-board-list');
+    if (!list) return;
+    list.innerHTML = '';
+    if (!turnOrder) return;
+    
+    turnOrder.forEach(p => {
+        let li = document.createElement('li');
+        if (p.clue) {
+            li.innerHTML = `<span><strong>${p.name}</strong></span> <span class="vote-clue-badge">"${p.clue}"</span>`;
+        } else if (p.id === activePlayerId) {
+            li.style.borderLeftColor = 'var(--accent-red)';
+            li.style.background = 'rgba(255,42,64,0.15)';
+            li.innerHTML = `<span><strong>👉 ${p.name}</strong></span> <span class="highlight-red" style="font-style:italic;">typing... (10s)</span>`;
+        } else {
+            li.style.opacity = '0.5';
+            li.innerHTML = `<span>${p.name}</span> <span style="font-style:italic; font-size:0.9rem;">waiting...</span>`;
+        }
+        list.appendChild(li);
+    });
+}
+
+function showAllCluesDoneClient(clues) {
+    if (clientTurnTimer) clearInterval(clientTurnTimer);
+    let timerEl = document.getElementById('timer-display');
+    if (timerEl) timerEl.innerText = '✓';
+    let bannerEl = document.getElementById('turn-banner');
+    if (bannerEl) bannerEl.innerHTML = `<span class="highlight-gold">ALL WORDS GIVEN! PROCEEDING TO VOTE...</span>`;
+    let inputContainer = document.getElementById('turn-input-container');
+    if (inputContainer) inputContainer.classList.add('hidden');
+    let waitingContainer = document.getElementById('turn-waiting-container');
+    if (waitingContainer) waitingContainer.classList.add('hidden');
+    updateClueBoardUI(clues, null);
+}
+
+// --- VOTING (WITH WORD CLUES SHOWN) ---
+function setupLocalVoteScreen(alivePlayers, clues) {
     navTo('screen-local-vote');
+    let summaryList = document.getElementById('local-vote-clues-summary');
+    if (summaryList) {
+        summaryList.innerHTML = '';
+        if (clues) {
+            clues.forEach(c => {
+                let li = document.createElement('li');
+                li.innerHTML = `<span><strong>${c.name}</strong></span> <span class="vote-clue-badge">"${c.clue}"</span>`;
+                summaryList.appendChild(li);
+            });
+        }
+    }
+    
+    let clueMap = {};
+    if (clues) {
+        clues.forEach(c => { clueMap[c.id] = c.clue; });
+    }
+    
     let list = document.getElementById('local-vote-list');
     list.innerHTML = '';
 
     alivePlayers.forEach(p => {
+        let pClue = clueMap[p.id] ? `"${clueMap[p.id]}"` : '';
         let btn = document.createElement('button');
         btn.className = 'vote-btn';
-        btn.innerText = `ELIMINATE ${p.name}`;
+        btn.innerHTML = `
+            <div class="vote-btn-content">
+                <span>ELIMINATE <strong>${p.name}</strong></span>
+                ${pClue ? `<span class="vote-clue-badge">${pClue}</span>` : ''}
+            </div>
+        `;
         btn.onclick = () => {
             if (confirm(`Are you sure the group voted to eliminate ${p.name}?`)) {
                 gameState.votes = {};
-                // Force a fake vote from everyone to this person
                 alivePlayers.forEach(ap => {
                     gameState.votes[ap.id] = p.id;
                 });
-                checkVotesComplete(); // Resolves just like online!
+                checkVotesComplete();
             }
         };
         list.appendChild(btn);
     });
 }
 
-// --- VOTING ---
 let selectedVoteId = null;
 
-function setupVoteScreen(alivePlayers) {
+function setupVoteScreen(alivePlayers, clues) {
     navTo('screen-vote');
+    let summaryList = document.getElementById('vote-clues-summary');
+    if (summaryList) {
+        summaryList.innerHTML = '';
+        if (clues) {
+            clues.forEach(c => {
+                let li = document.createElement('li');
+                li.innerHTML = `<span><strong>${c.name}</strong></span> <span class="vote-clue-badge">"${c.clue}"</span>`;
+                summaryList.appendChild(li);
+            });
+        }
+    }
+    
+    let clueMap = {};
+    if (clues) {
+        clues.forEach(c => { clueMap[c.id] = c.clue; });
+    }
+
     let list = document.getElementById('vote-list');
     list.innerHTML = '';
     selectedVoteId = null;
 
     alivePlayers.forEach(p => {
+        let pClue = clueMap[p.id] ? `"${clueMap[p.id]}"` : '';
         let btn = document.createElement('button');
         btn.className = 'vote-btn';
-        btn.innerText = p.name;
+        btn.innerHTML = `
+            <div class="vote-btn-content">
+                <span>VOTE <strong>${p.name}</strong></span>
+                ${pClue ? `<span class="vote-clue-badge">${pClue}</span>` : ''}
+            </div>
+        `;
         btn.onclick = () => {
             document.querySelectorAll('.vote-btn').forEach(b => b.classList.remove('selected'));
             btn.classList.add('selected');
             selectedVoteId = p.id;
             
-            // Send vote
             if (isHost) handleHostData({peer: peer.id}, {type:'VOTE', voteId: selectedVoteId});
             else hostConnection.send({type:'VOTE', voteId: selectedVoteId});
             
-            btn.innerText = `VOTED: ${p.name}`;
+            btn.innerHTML = `
+                <div class="vote-btn-content">
+                    <span>VOTED: <strong>${p.name}</strong></span>
+                    ${pClue ? `<span class="vote-clue-badge">${pClue}</span>` : ''}
+                </div>
+            `;
             btn.disabled = true;
         };
         list.appendChild(btn);
